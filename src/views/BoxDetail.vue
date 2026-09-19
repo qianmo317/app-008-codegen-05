@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { getTask, updateBox, deleteBox } from '../db';
-import { generateQRDataURL, statusColor, statusLabel } from '../utils';
-import type { MoveTask, Box, BoxStatus } from '../types';
+import { getTask, updateBox, deleteBox, setBoxUnloadTier } from '../db';
+import { generateQRDataURL, statusColor, statusLabel, UNLOAD_TIERS, tierOf, tierLabel } from '../utils';
+import type { MoveTask, Box, BoxStatus, UnloadTier } from '../types';
 
 const route = useRoute();
 const router = useRouter();
 const task = ref<MoveTask | null>(null);
 const box = ref<Box | null>(null);
 const qrUrl = ref('');
+const floorTo = ref<number | null>(null);
+const distanceKm = ref<number | null>(null);
 
 const statuses: BoxStatus[] = ['packed', 'loaded', 'arrived', 'unpacked', 'damaged', 'missing'];
 
@@ -20,6 +22,8 @@ async function load() {
   const b = t.boxes.find((x) => x.code === (route.params.code as string));
   if (!b) return;
   box.value = b;
+  floorTo.value = b.floorTo ?? null;
+  distanceKm.value = b.distanceKm ?? null;
   qrUrl.value = await generateQRDataURL(t.id, b.code);
 }
 
@@ -28,6 +32,20 @@ async function setStatus(s: BoxStatus) {
   box.value.status = s;
   box.value.updatedAt = Date.now();
   await updateBox(task.value.id, box.value);
+}
+
+async function setTier(t: UnloadTier) {
+  if (!box.value || !task.value) return;
+  await setBoxUnloadTier(task.value.id, box.value.id, t); // 整份装车单跟着重排
+  box.value.unloadTier = t;
+}
+
+async function savePlacement() {
+  if (!box.value || !task.value) return;
+  box.value.floorTo = floorTo.value ?? undefined;
+  box.value.distanceKm = distanceKm.value ?? undefined;
+  box.value.updatedAt = Date.now();
+  await updateBox(task.value.id, box.value); // updateBox 内会重排装车单
 }
 
 async function remove() {
@@ -61,6 +79,29 @@ onMounted(load);
           <button v-for="s in statuses" :key="s" class="tag" :class="{active: box.status === s}" @click="setStatus(s)">
             {{ statusLabel(s) }}
           </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">卸货先后（改档后整份装车单自动重排）</div>
+        <div style="display:flex;gap:8px;">
+          <button
+            v-for="t in UNLOAD_TIERS"
+            :key="t"
+            class="tag"
+            :class="{active: tierOf(box) === t}"
+            @click="setTier(t)"
+          >{{ tierLabel(t) }}</button>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px;">
+          <div style="flex:1;">
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">目标楼层</div>
+            <input v-model.number="floorTo" type="number" min="0" class="input" @change="savePlacement" />
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">目的地距离 (km)</div>
+            <input v-model.number="distanceKm" type="number" min="0" class="input" placeholder="可选" @change="savePlacement" />
+          </div>
         </div>
       </div>
 

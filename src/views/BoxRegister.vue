@@ -2,8 +2,8 @@
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { getTask, saveTask } from '../db';
-import { uid, compressImage, generateBoxCode } from '../utils';
-import type { MoveTask, Box } from '../types';
+import { uid, compressImage, generateBoxCode, UNLOAD_TIERS, tierLabel } from '../utils';
+import type { MoveTask, Box, UnloadTier } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -13,6 +13,9 @@ const tags = ref<string[]>([]);
 const fragile = ref(false);
 const liquid = ref(false);
 const weightKg = ref<number | null>(null);
+const unloadTier = ref<UnloadTier>('middle');
+const floorTo = ref<number | null>(1);
+const distanceKm = ref<number | null>(null);
 const note = ref('');
 const photoData = ref<string>('');
 
@@ -52,6 +55,9 @@ async function submit() {
     liquid: liquid.value,
     photo: photoData.value || undefined,
     weightKg: weightKg.value ?? undefined,
+    unloadTier: unloadTier.value,
+    floorTo: floorTo.value ?? undefined,
+    distanceKm: distanceKm.value ?? undefined,
     status: 'packed',
     note: note.value || undefined,
     createdAt: Date.now(),
@@ -64,6 +70,9 @@ async function submit() {
     fragile.value = false;
     liquid.value = false;
     weightKg.value = null;
+    unloadTier.value = 'middle';
+    floorTo.value = 1;
+    distanceKm.value = null;
     note.value = '';
     photoData.value = '';
   } else {
@@ -107,6 +116,27 @@ onMounted(load);
       <div class="card">
         <label class="label">重量 (kg，可选)</label>
         <input v-model.number="weightKg" type="number" class="input" placeholder="例如：12.5" />
+      </div>
+      <div class="card">
+        <label class="label">卸货先后（到了新家）</label>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <span
+            v-for="t in UNLOAD_TIERS"
+            :key="t"
+            class="tag"
+            :class="{active: unloadTier === t}"
+            @click="unloadTier = t"
+          >{{ tierLabel(t) }}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;">先卸的装车时会排在车厢最外面</div>
+      </div>
+      <div class="card">
+        <label class="label">目标楼层</label>
+        <input v-model.number="floorTo" type="number" min="0" class="input" placeholder="例如：3" />
+      </div>
+      <div class="card">
+        <label class="label">目的地距离 (km，多点卸货时填)</label>
+        <input v-model.number="distanceKm" type="number" min="0" class="input" placeholder="可选" />
       </div>
       <div class="card">
         <label class="label">箱内照片</label>

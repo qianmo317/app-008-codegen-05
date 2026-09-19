@@ -1,5 +1,5 @@
 import QRCode from 'qrcode';
-import type { MoveTask, BoxStatus } from './types';
+import type { MoveTask, Box, BoxStatus, UnloadTier, Vehicle } from './types';
 
 export function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -124,4 +124,59 @@ export function roomProgress(task: MoveTask, room: string): { total: number; unp
     unpacked: boxes.filter((b) => b.status === 'unpacked').length,
     damaged: boxes.filter((b) => b.status === 'damaged').length,
   };
+}
+
+export const UNLOAD_TIERS: UnloadTier[] = ['first', 'middle', 'last'];
+
+export function tierOf(box: Box): UnloadTier {
+  return box.unloadTier ?? 'middle';
+}
+
+export function tierLabel(tier: UnloadTier): string {
+  const map: Record<UnloadTier, string> = {
+    first: '先卸',
+    middle: '中间卸',
+    last: '最后卸',
+  };
+  return map[tier];
+}
+
+export function tierColor(tier: UnloadTier): string {
+  const map: Record<UnloadTier, string> = {
+    first: '#22c55e',
+    middle: '#f59e0b',
+    last: '#9ca3af',
+  };
+  return map[tier];
+}
+
+// 装车顺序里各档的先后：最后卸的最先装（压车厢最里面），先卸的最后装（最外面）
+const TIER_LOAD_RANK: Record<UnloadTier, number> = { last: 0, middle: 1, first: 2 };
+
+// 装车顺序比较：排前面的先装（靠车厢最里面），排后面的后装（靠门口，先卸）
+export function compareLoadOrder(a: Box, b: Box): number {
+  const t = TIER_LOAD_RANK[tierOf(a)] - TIER_LOAD_RANK[tierOf(b)];
+  if (t !== 0) return t;
+  const f = (b.floorTo ?? 1) - (a.floorTo ?? 1); // 同档内楼层低的先卸 → 高楼层靠里先装
+  if (f !== 0) return f;
+  const d = (b.distanceKm ?? 0) - (a.distanceKm ?? 0); // 目的地近的先卸 → 远的靠里先装
+  if (d !== 0) return d;
+  const w = (b.weightKg ?? 0) - (a.weightKg ?? 0); // 沉的垫底先装
+  if (w !== 0) return w;
+  return a.code.localeCompare(b.code);
+}
+
+// 重排一辆车的装车单：同一辆车同一件只排一次（去重），剔除已删除的箱子，再按规则排序
+export function sortVehicleLoad(vehicle: Vehicle, boxes: Box[]): string[] {
+  const byId = new Map(boxes.map((b) => [b.id, b]));
+  const unique = [...new Set(vehicle.boxIds)].filter((id) => byId.has(id));
+  return unique.map((id) => byId.get(id)!).sort(compareLoadOrder).map((b) => b.id);
+}
+
+// 整份装车单重排：任何箱子的先后档/楼层/距离/重量变了都调用
+export function resortTaskVehicles(task: MoveTask): void {
+  if (!task.vehicles) return;
+  for (const v of task.vehicles) {
+    v.boxIds = sortVehicleLoad(v, task.boxes);
+  }
 }

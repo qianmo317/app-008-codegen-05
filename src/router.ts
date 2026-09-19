@@ -8,6 +8,7 @@ const routes = [
   { path: '/task/:id/register', name: 'BoxRegister', component: () => import('./views/BoxRegister.vue') },
   { path: '/task/:id/labels', name: 'LabelsPrint', component: () => import('./views/LabelsPrint.vue') },
   { path: '/task/:id/scan', name: 'ScanCheck', component: () => import('./views/ScanCheck.vue') },
+  { path: '/task/:id/load', name: 'LoadPlan', component: () => import('./views/LoadPlan.vue') },
   { path: '/task/:id/check', name: 'DeliveryCheck', component: () => import('./views/DeliveryCheck.vue') },
 ];
 
