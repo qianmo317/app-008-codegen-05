@@ -82,5 +82,9 @@ export async function deleteBox(taskId: string, boxId: string): Promise<void> {
   const task = await getTask(taskId);
   if (!task) throw new Error('Task not found');
   task.boxes = task.boxes.filter((b) => b.id !== boxId);
+  // 同步从所有装车单移除
+  for (const truck of task.trucks ?? []) {
+    truck.boxIds = truck.boxIds.filter((id) => id !== boxId);
+  }
   await saveTask(task);
 }

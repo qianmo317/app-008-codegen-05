@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { getTask, updateBox, deleteBox } from '../db';
+import { getTask, updateBox, deleteBox, saveTask } from '../db';
 import { generateQRDataURL, statusColor, statusLabel } from '../utils';
-import type { MoveTask, Box, BoxStatus } from '../types';
+import { TIER_SHORT, TIER_COLOR, DIST_LABEL, tierOf, floorOf, reorderAfterBoxChange } from '../loading';
+import type { MoveTask, Box, BoxStatus, UnloadTier, DestDistance } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -12,6 +13,8 @@ const box = ref<Box | null>(null);
 const qrUrl = ref('');
 
 const statuses: BoxStatus[] = ['packed', 'loaded', 'arrived', 'unpacked', 'damaged', 'missing'];
+const tiers: UnloadTier[] = ['last', 'middle', 'first'];
+const distances: DestDistance[] = [1, 2, 3];
 
 async function load() {
   const t = await getTask(route.params.id as string);
@@ -28,6 +31,15 @@ async function setStatus(s: BoxStatus) {
   box.value.status = s;
   box.value.updatedAt = Date.now();
   await updateBox(task.value.id, box.value);
+}
+
+// 修改影响装车次序的字段后，该箱所在车辆的整份装车单跟着重排
+async function saveLoadAttrs() {
+  if (!box.value || !task.value) return;
+  box.value.updatedAt = Date.now();
+  reorderAfterBoxChange(task.value, box.value.id);
+  await saveTask(task.value);
+  alert('已保存，装车单已按规则重排');
 }
 
 async function remove() {
@@ -76,9 +88,32 @@ onMounted(load);
         <div style="font-size:14px;color:var(--text-secondary);">特殊标记</div>
         <div>{{ box.fragile ? '易碎 ' : '' }}{{ box.liquid ? '液体禁运' : '' }}</div>
       </div>
-      <div class="card" v-if="box.weightKg">
-        <div style="font-size:14px;color:var(--text-secondary);">重量</div>
-        <div>{{ box.weightKg }} kg</div>
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:8px;">卸货与装车属性</div>
+        <label class="label">卸货档</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          <button
+            v-for="t in tiers" :key="t" class="tag"
+            :class="{active: tierOf(box) === t}"
+            :style="tierOf(box) === t ? {background: TIER_COLOR[t], borderColor: TIER_COLOR[t]} : {}"
+            @click="box.unloadTier = t"
+          >{{ TIER_SHORT[t] }}</button>
+        </div>
+        <div class="grid-2">
+          <div>
+            <label class="label">新家楼层</label>
+            <input v-model.number="box.destFloor" type="number" min="1" class="input" :placeholder="String(floorOf(box))" />
+          </div>
+          <div>
+            <label class="label">距卸车点远近</label>
+            <select v-model="box.destDist" class="select">
+              <option v-for="d in distances" :key="d" :value="d">{{ d }} - {{ DIST_LABEL[d] }}</option>
+            </select>
+          </div>
+        </div>
+        <label class="label" style="margin-top:10px;">重量 (kg)</label>
+        <input v-model.number="box.weightKg" type="number" class="input" placeholder="沉箱在同档内先装压底" />
+        <button class="btn btn-block" style="margin-top:10px;" @click="saveLoadAttrs">保存并重排装车单</button>
       </div>
       <div class="card" v-if="box.photo">
         <img :src="box.photo" style="width:100%;border-radius:10px;" />

@@ -3,7 +3,8 @@ import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { getTask, saveTask } from '../db';
 import { uid, compressImage, generateBoxCode } from '../utils';
-import type { MoveTask, Box } from '../types';
+import { TIER_LABEL, TIER_COLOR, DIST_LABEL } from '../loading';
+import type { MoveTask, Box, UnloadTier, DestDistance } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -13,10 +14,15 @@ const tags = ref<string[]>([]);
 const fragile = ref(false);
 const liquid = ref(false);
 const weightKg = ref<number | null>(null);
+const unloadTier = ref<UnloadTier>('middle');
+const destFloor = ref<number>(1);
+const destDist = ref<DestDistance>(2);
 const note = ref('');
 const photoData = ref<string>('');
 
 const tagOptions = ['厨房', '衣物', '证件', '书籍', '电子', '杂物'];
+const tiers: UnloadTier[] = ['last', 'middle', 'first'];
+const distances: DestDistance[] = [1, 2, 3];
 
 async function load() {
   task.value = await getTask(route.params.id as string);
@@ -52,6 +58,9 @@ async function submit() {
     liquid: liquid.value,
     photo: photoData.value || undefined,
     weightKg: weightKg.value ?? undefined,
+    unloadTier: unloadTier.value,
+    destFloor: destFloor.value,
+    destDist: destDist.value,
     status: 'packed',
     note: note.value || undefined,
     createdAt: Date.now(),
@@ -64,6 +73,9 @@ async function submit() {
     fragile.value = false;
     liquid.value = false;
     weightKg.value = null;
+    unloadTier.value = 'middle';
+    destFloor.value = 1;
+    destDist.value = 2;
     note.value = '';
     photoData.value = '';
   } else {
@@ -105,7 +117,30 @@ onMounted(load);
         </div>
       </div>
       <div class="card">
-        <label class="label">重量 (kg，可选)</label>
+        <label class="label">卸货档（先卸的装车时靠车门、排最外面）</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <span
+            v-for="t in tiers" :key="t" class="tag"
+            :class="{active: unloadTier === t}"
+            :style="unloadTier === t ? {background: TIER_COLOR[t], borderColor: TIER_COLOR[t]} : {}"
+            @click="unloadTier = t"
+          >{{ TIER_LABEL[t] }}</span>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <label class="label">新家楼层</label>
+          <input v-model.number="destFloor" type="number" min="1" class="input" placeholder="例如：6" />
+        </div>
+        <div class="card">
+          <label class="label">距卸车点远近</label>
+          <select v-model="destDist" class="select">
+            <option v-for="d in distances" :key="d" :value="d">{{ d }} - {{ DIST_LABEL[d] }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="card">
+        <label class="label">重量 (kg，可选；同档内沉箱先装压底)</label>
         <input v-model.number="weightKg" type="number" class="input" placeholder="例如：12.5" />
       </div>
       <div class="card">
